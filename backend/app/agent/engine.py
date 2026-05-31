@@ -1,123 +1,161 @@
-"""AI Agent 引擎 - ReAct 循环: LLM自主决策→调用工具→观察结果→继续决策→输出
-模式: User Query → LLM(tools) → [tool_calls...] → observe → LLM → ... → final answer
+"""AI Agent 引擎 v2 - RAG增强 + 并行工具调用 + 全链路可观测
+模式: RAG检索 → 系统提示词注入 → LLM(并行工具调用) → 观测记录 → 存入知识库
+参考: Anthropic Building Effective Agents + 2025 生产最佳实践
 """
-import json, time, logging
-from typing import Callable
+from __future__ import annotations
+import json, time, logging, concurrent.futures
 from openai import OpenAI
 from app.config.settings import settings
 from app.agent.tool_registry import ToolRegistry
+from app.agent.observability import (
+    AgentSession, new_session, log_llm_call, log_tool_call, finalize_session, metrics
+)
+from app.agent.rag import search, store_analysis
+from app.agent.conversation import conversations
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """你是 StockSnap AI 股票分析助手，运行在微信小程序中。你可以自主调用工具来分析股票。
+SYSTEM_PROMPT = """你是 StockSnap AI 股票分析助手。你可以自主调用工具来分析股票。
 
 ## 核心能力
-- 搜索股票（A股/美股）
-- 获取实时行情、K线数据
-- 深度AI基本面分析（投资论点/行业/催化剂/财报/估值/风险）
-- 技术分析（RSI/MACD/均线/趋势判断）
+- 搜索股票（A股/美股）、获取实时行情、K线数据
+- 基本面分析（估值/财务/行业）、技术分析（RSI/MACD/均线）
 - 策略回测（双均线/MACD/RSI/布林带/海龟）
 
 ## 工作原则
-1. 用户输入股票名称或代码时，先用 search_stock 找到准确代码
-2. 获取数据后再做分析，不要凭空猜测
-3. 技术分析和基本面分析结合，给出综合判断
-4. 用户问"能不能买"时，运行 deep_analyze + technical_analyze + run_backtest 三项，综合输出
-5. 回答简洁专业，用中文，关键数据突出显示
-6. 用工具返回的真实数据，不要编造
-7. 如果工具返回错误，如实告知用户
-
-## 搜索策略
-- search_stock 支持模糊搜索，直接搜名称或代码即可
-- 搜到结果后直接用代码(symbol)调用后续工具
-- 不要反复搜索同一个标的
-
-## 分析策略
-- deep_analyze 返回原始数据，agent需自行解读
-- 结合 technical_analyze + run_backtest 形成综合判断
-- 数据驱动，不编造信息
+1. 数据驱动，不编造信息。工具失败时如实告知。
+2. search_stock 支持模糊搜索名/代码，搜到后直接用代码调后续工具
+3. 可以同时调用多个工具（如 get_kline + get_stock_info 并行）
+4. 综合基本面、技术面、回测结果后给出 🟢买入/🟡持有/🔴卖出 评级
+5. 简洁专业，关键数据突出。中文回答。
+6. 如果已有的知识库数据和实时数据趋势一致，直接引用。如果不一致，以实时数据为准。
 
 ## 输出格式
-最终回答使用 Markdown，务必包含: 公司概况、估值分析、技术面判断、回测结果、综合评级
-评级: 🟢买入 / 🟡持有 / 🔴卖出
-回答必须具体，不能空白。"""
+Markdown 格式: 公司概况 → 估值分析 → 技术面 → 回测表现 → 风险提示 → 综合评级"""
 
-MAX_TOOL_ROUNDS = 5   # 最多5轮（减少无意义重试）
-MAX_TOTAL_TIME = 240  # 4分钟
+MAX_TOOL_ROUNDS = 5
+MAX_TOTAL_TIME = 240
+MAX_PARALLEL_TOOLS = 4  # 单轮最多并行调用工具数
 
 class AgentEngine:
-    """ReAct Agent: Think → Act → Observe → Think → ... → Answer"""
+    """ReAct Agent: Think → Act(并行) → Observe → Think → ... → Answer"""
 
-    def __init__(self, user_tier: str = "free"):
+    def __init__(self, user_id: int = 0, user_tier: str = "free"):
         self.client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=settings.DEEPSEEK_BASE_URL, timeout=120)
         self.model = settings.DEEPSEEK_MODEL
+        self.user_id = user_id
         self.user_tier = user_tier
         self.tools = ToolRegistry.list_for_tier(user_tier)
+        self.session: AgentSession = None
         self.messages = []
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_TOOLS)
 
     def run(self, user_query: str, context: dict = None, skills: list[str] = None) -> dict:
-        """执行 Agent 循环，返回最终结果
-        Args:
-            user_query: 用户自然语言问题
-            context: 上下文 {focus_symbol, focus_market}
-            skills: 用户选择的 Skill ID 列表 (注入对应的 system prompt)
-        """
+        """执行 Agent 循环"""
+        self.session = new_session(self.user_id, user_query, self.user_tier)
         start = time.time()
-        # 构建 system prompt，注入选中的 Skill 指令
-        prompt = SYSTEM_PROMPT
+
+        # 1. RAG 检索相关上下文
+        rag_context = ""
+        if context and context.get("focus_symbol"):
+            rag_docs = search(context["focus_symbol"], n_results=3)
+            if rag_docs:
+                rag_context = "\n\n## 知识库参考 (历史分析)\n" + "\n---\n".join(rag_docs[:2])
+                logger.info(f"[RAG] 检索到 {len(rag_docs)} 条相关记录")
+
+        # 2. 构建消息
+        prompt = SYSTEM_PROMPT + rag_context
         if skills:
             from app.agent.skill_registry import SkillRegistry
-            skill_prompt = SkillRegistry.get_prompt_for_skills(skills, self.user_tier)
-            if skill_prompt:
-                prompt += "\n\n## 用户选择的技能\n" + skill_prompt
+            sp = SkillRegistry.get_prompt_for_skills(skills, self.user_tier)
+            if sp: prompt += "\n\n## 用户选择的技能\n" + sp
         self.messages = [{"role": "system", "content": prompt}]
         if context and context.get("focus_symbol"):
             self.messages.append({"role": "system", "content": f"用户当前关注的股票: {context['focus_symbol']} ({context.get('focus_market', 'CN')})"})
+
+        # 3. 注入历史对话
+        history = conversations.get_history(self.user_id, limit=8)
+        if history: self.messages.extend(history)
+
         self.messages.append({"role": "user", "content": user_query})
 
-        tool_rounds = 0
-        final_text = ""
-
+        # 4. Agent 循环
+        tool_rounds = 0; final_text = ""
         while tool_rounds < MAX_TOOL_ROUNDS and (time.time() - start) < MAX_TOTAL_TIME:
+            llm_start = time.time()
             try:
                 response = self.client.chat.completions.create(
                     model=self.model, messages=self.messages, tools=self.tools or None,
-                    tool_choice="auto" if self.tools else None, temperature=0.3, max_tokens=4096)
+                    tool_choice="auto" if self.tools else None, temperature=0.3, max_tokens=4096,
+                    parallel_tool_calls=(len(self.tools) > 1))
             except Exception as e:
-                logger.error(f"Agent LLM调用失败: {e}")
-                return {"error": f"AI服务异常: {e}", "rounds": tool_rounds, "time": time.time() - start}
+                logger.error(f"LLM 调用失败: {e}")
+                log_llm_call(self.session, self.model, 0, 0, int((time.time()-llm_start)*1000), False, str(e))
+                return self._finish(f"AI服务暂时不可用: {e}", start, "failed")
 
             msg = response.choices[0].message
+            usage = response.usage
+            log_llm_call(self.session, self.model,
+                         usage.prompt_tokens if usage else 0, usage.completion_tokens if usage else 0,
+                         int((time.time()-llm_start)*1000), True)
 
-            # 有工具调用 → 执行
+            # 工具调用 → 并行执行
             if msg.tool_calls:
                 self.messages.append(msg)
-                for tc in msg.tool_calls:
-                    fn_name = tc.function.name
-                    try:
-                        fn_args = json.loads(tc.function.arguments)
-                    except json.JSONDecodeError:
-                        fn_args = {}
-                    logger.info(f"[Agent] 调用工具: {fn_name}({fn_args})")
-                    result_str = ToolRegistry.execute(fn_name, fn_args, self.user_tier)
-                    self.messages.append({
-                        "role": "tool", "tool_call_id": tc.id,
-                        "content": result_str[:4000]  # 截断过长结果
-                    })
+                tool_count = min(len(msg.tool_calls), MAX_PARALLEL_TOOLS)
+                logger.info(f"[Agent] 并行调用 {tool_count} 个工具")
+                futures = {}
+                for tc in msg.tool_calls[:tool_count]:
+                    futures[tc.id] = self.executor.submit(self._exec_tool, tc)
+                # 等待全部完成
+                for tc_id, future in futures.items():
+                    tc = next(t for t in msg.tool_calls if t.id == tc_id)
+                    try: result_str = future.result(timeout=60)
+                    except Exception as e: result_str = json.dumps({"error": str(e)})
+                    self.messages.append({"role": "tool", "tool_call_id": tc_id, "content": result_str[:4000]})
                 tool_rounds += 1
                 continue
 
-            # 无工具调用 → 最终回答
+            # 最终回答
             final_text = msg.content or ""
             break
 
-        elapsed = time.time() - start
-        logger.info(f"[Agent] 完成: {tool_rounds}轮, {elapsed:.1f}s")
+        status = "completed" if final_text else "incomplete"
+        return self._finish(final_text or "分析完成，但未能生成文本回复", start, status)
 
-        return {
-            "answer": final_text or "分析完成，但未能生成文本回复",
-            "rounds": tool_rounds,
-            "time_seconds": round(elapsed, 1),
-            "tier": self.user_tier,
-            "model": self.model
-        }
+    def _exec_tool(self, tc) -> str:
+        """执行单个工具并记录审计"""
+        fn_name = tc.function.name
+        try: fn_args = json.loads(tc.function.arguments)
+        except: fn_args = {}
+        t0 = time.time()
+        try:
+            result = ToolRegistry.execute(fn_name, fn_args, self.user_tier)
+            log_tool_call(self.session, fn_name, fn_args, int((time.time()-t0)*1000), True, result=str(result)[:200])
+            return result
+        except Exception as e:
+            log_tool_call(self.session, fn_name, fn_args, int((time.time()-t0)*1000), False, str(e))
+            return json.dumps({"error": str(e)})
+
+    def _finish(self, answer: str, start: float, status: str) -> dict:
+        elapsed = time.time() - start
+        finalize_session(self.session, status)
+        # 存入 RAG 知识库
+        if self.session.user_id > 0 and status == "completed":
+            conversations.add_turn(self.session.user_id, "user", self.session.query)
+            conversations.add_turn(self.session.user_id, "assistant", answer[:2000])
+        # 存储分析到向量库 (如果包含股票分析)
+        try:
+            # 尝试从工具调用中提取symbol
+            for tc in self.session.tool_calls:
+                if tc.tool_name == "deep_analyze" and tc.success:
+                    symbol = tc.arguments.get("symbol", "")
+                    if symbol:
+                        store_analysis(symbol, tc.arguments.get("market", "CN"), {}, answer[:3000])
+        except Exception as e: logger.debug(f"RAG存储跳过: {e}")
+
+        return {"answer": answer, "rounds": len(self.session.llm_calls),
+                "tool_calls": len(self.session.tool_calls),
+                "tokens": self.session.total_tokens, "cost_rmb": round(self.session.total_cost_rmb, 6),
+                "time_seconds": round(elapsed, 1), "status": status,
+                "session_id": self.session.session_id}
