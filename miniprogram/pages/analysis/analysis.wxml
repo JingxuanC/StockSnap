@@ -1,22 +1,39 @@
 <view class="page">
-  <view class="header">
-    <view class="hbg"></view>
-    <view class="hcontent">
-      <view class="top"><view class="info"><text class="name">{{report.company?.name||symbol}}</text><text class="sym">{{market}} {{symbol}}</text></view>
-        <view class="score-wrap"><view class="score {{overall>=70?'score-high':(overall>=40?'score-mid':'score-low')}}" style="border-color:{{overall>=70?'#00b894':(overall>=40?'#fdcb6e':'#e17055')}}"><text class="sn">{{overall}}</text><text class="sl">评分</text></view></view>
-      </view>
-      <view class="rating-row"><text class="rbadge" style="background:{{rating=='BUY'?'#00b894':(rating=='SELL'?'#e17055':'#fdcb6e')}}">{{rating=='BUY'?'买入':(rating=='SELL'?'卖出':'持有')}}</text><text class="rsummary">{{report.rating?.summary}}</text></view>
+  <!-- 轮询等待状态 -->
+  <view class="polling" wx:if="{{status==='pending'||status==='processing'}}">
+    <view class="poll-card">
+      <view class="poll-spinner"></view>
+      <text class="poll-title">AI 正在分析 {{symbol}}...</text>
+      <text class="poll-sub">{{status==='pending'?'排队等待中':(elapsed<10?'加载分析模型...':(elapsed<30?'分析基本面与行业...':(elapsed<60?'评估估值与催化剂...':'生成研究报告...')))}}</text>
+      <text class="poll-time">已等待 {{elapsed}} 秒</text>
+      <view class="poll-bar"><view class="poll-fill" style="width:{{elapsed<90?elapsed/90*100:100}}%"></view></view>
     </view>
   </view>
-  <view class="tabs"><scroll-view scroll-x><view class="tlist">
-    <view class="t{{active==='overview'?' act':''}}" bindtap="onTab" data-t="overview">概览</view>
-    <view class="t{{active==='thesis'?' act':''}}" bindtap="onTab" data-t="thesis">论点</view>
-    <view class="t{{active==='sector'?' act':''}}" bindtap="onTab" data-t="sector">行业</view>
-    <view class="t{{active==='catalysts'?' act':''}}" bindtap="onTab" data-t="catalysts">催化剂</view>
-    <view class="t{{active==='earnings'?' act':''}}" bindtap="onTab" data-t="earnings">财报</view>
-    <view class="t{{active==='valuation'?' act':''}}" bindtap="onTab" data-t="valuation">估值</view>
-    <view class="t{{active==='risks'?' act':''}}" bindtap="onTab" data-t="risks">风险</view>
-  </view></scroll-view></view>
-  <view class="content"><rich-text nodes="{{contentHtml}}"></rich-text></view>
-  <view class="bottom"><button class="btn-primary" bindtap="onBacktest">📊 回测此股票</button></view>
+
+  <!-- 报告内容 -->
+  <block wx:if="{{report}}">
+    <view class="header">
+      <view class="hbg"></view>
+      <view class="hcontent">
+        <view class="top"><view class="info"><text class="name">{{report.company?.name||symbol}}</text><text class="sym">{{market}} {{symbol}}</text></view>
+          <view class="score-wrap"><view class="score {{overall>=70?'score-high':(overall>=40?'score-mid':'score-low')}}" style="border-color:{{overall>=70?'#00b894':(overall>=40?'#fdcb6e':'#e17055')}}"><text class="sn">{{overall}}</text><text class="sl">评分</text></view></view>
+        </view>
+        <view class="rating-row"><text class="rbadge" style="background:{{rating=='BUY'?'#00b894':(rating=='SELL'?'#e17055':'#fdcb6e')}}">{{rating=='BUY'?'买入':(rating=='SELL'?'卖出':'持有')}}</text><text class="rsummary">{{report.rating?.summary}}</text></view>
+      </view>
+    </view>
+    <view class="tabs"><scroll-view scroll-x><view class="tlist">
+      <view class="t{{active==='overview'?' act':''}}" bindtap="onTab" data-t="overview">概览</view>
+      <view class="t{{active==='thesis'?' act':''}}" bindtap="onTab" data-t="thesis">论点</view>
+      <view class="t{{active==='sector'?' act':''}}" bindtap="onTab" data-t="sector">行业</view>
+      <view class="t{{active==='catalysts'?' act':''}}" bindtap="onTab" data-t="catalysts">催化剂</view>
+      <view class="t{{active==='earnings'?' act':''}}" bindtap="onTab" data-t="earnings">财报</view>
+      <view class="t{{active==='valuation'?' act':''}}" bindtap="onTab" data-t="valuation">估值</view>
+      <view class="t{{active==='risks'?' act':''}}" bindtap="onTab" data-t="risks">风险</view>
+    </view></scroll-view></view>
+    <view class="content"><rich-text nodes="{{contentHtml}}"></rich-text></view>
+    <view class="bottom"><button class="btn-primary" bindtap="onBacktest">📊 回测此股票</button></view>
+  </block>
+
+  <!-- 非报告加载 -->
+  <view class="empty-state" wx:if="{{!report && !taskId}}"><text>加载中...</text></view>
 </view>

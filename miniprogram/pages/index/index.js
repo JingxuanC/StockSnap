@@ -10,20 +10,20 @@ Page({ data: { markets: [{code:'CN',name:'A股'},{code:'US',name:'美股'}], mi:
   onAnalyze() {
     if (!this.data.code || this.data.loading) return;
     this.setData({loading:true});
-    wx.showLoading({title:'AI分析中...',mask:true});
-    app.request('/api/analysis/analyze','POST',{market:this.data.markets[this.data.mi].code,symbol:this.data.code})
+    wx.showLoading({title:'提交分析任务...',mask:true});
+    // 异步提交 → 立即返回 task_id
+    app.request('/api/analysis/analyze-async','POST',{market:this.data.markets[this.data.mi].code,symbol:this.data.code})
       .then(r => { wx.hideLoading(); this.setData({loading:false});
-        app.globalData._report = r;
-        wx.navigateTo({url:'/pages/analysis/analysis'});
+        wx.navigateTo({url:'/pages/analysis/analysis?task_id='+r.task_id+'&symbol='+this.data.code});
         this.loadData(); this.loadQuota(); })
-      .catch(e => { wx.hideLoading(); this.setData({loading:false}); wx.showToast({title:e.message||'分析失败',icon:'none'}); });
+      .catch(e => { wx.hideLoading(); this.setData({loading:false}); wx.showToast({title:e.message||'提交失败',icon:'none'}); });
   },
   onHistory(e) {
     const id = e.currentTarget.dataset.id;
     wx.showLoading({title:'加载中...'});
     app.request('/api/analysis/'+id).then(r => { wx.hideLoading();
       app.globalData._report = r;
-      wx.navigateTo({url:'/pages/analysis/analysis'});
+      wx.navigateTo({url:'/pages/analysis/analysis?loaded=1'});
     }).catch(() => { wx.hideLoading(); wx.showToast({title:'加载失败',icon:'none'}); });
   }
 });

@@ -1,22 +1,65 @@
 const app = getApp();
-Page({ data: { report:{}, market:'', symbol:'', overall:0, rating:'HOLD', active:'overview', contentHtml:'' },
+Page({ data: { report:null, market:'', symbol:'', overall:0, rating:'HOLD', active:'overview', contentHtml:'',
+    taskId:'', status:'', elapsed:0, pollTimer:null },
   onLoad(options) {
-    let r = null;
-    if (app.globalData._report) {
-      r = app.globalData._report; app.globalData._report = null;
-    } else if (options.data) {
-      try { r = JSON.parse(decodeURIComponent(options.data)); } catch(e) { r = null; }
+    if (options.task_id) {
+      this.setData({taskId:options.task_id, symbol:options.symbol||'', status:'pending'});
+      this.startPoll();
+    } else if (app.globalData._report) {
+      this.setReport(app.globalData._report); app.globalData._report = null;
+    } else if (options.loaded) {
+      this.setData({contentHtml:'<p>加载完成，请返回查看</p>'});
     }
-    if (r) {
-      this.setData({ report:r, market:r.market||'', symbol:r.symbol||'',
-        overall:(r.scores||{}).overall||0, rating:(r.rating||{}).decision||'HOLD' });
-      this.renderTab('overview');
-    }
+  },
+  onUnload() {
+    if (this.data.pollTimer) { clearInterval(this.data.pollTimer); this.data.pollTimer = null; }
+  },
+  // 轮询任务状态
+  startPoll() {
+    wx.showLoading({title:'AI 分析中...',mask:true});
+    let elapsed = 0;
+    const timer = setInterval(() => {
+      elapsed += 3; this.setData({elapsed});
+      app.request('/api/analysis/task/'+this.data.taskId, 'GET', {}, {silent:true})
+        .then(task => {
+          this.setData({status:task.status});
+          if (task.status === 'completed') {
+            clearInterval(timer); wx.hideLoading();
+            this.setReport(task.result);
+          } else if (task.status === 'failed') {
+            clearInterval(timer); wx.hideLoading();
+            wx.showToast({title:task.error||'分析失败',icon:'none'});
+            this.setData({contentHtml:'<p style="color:#e17055">分析失败: '+(task.error||'未知错误')+'</p>'});
+          } else if (elapsed > 180) {
+            clearInterval(timer); wx.hideLoading();
+            this.setData({contentHtml:'<p>分析超时，请稍后重试</p>'});
+          } else if (task.status === 'processing') {
+            wx.setLoadingTitle({title:'AI 分析中... ' + (elapsed<10?'加载模型':(elapsed<30?'分析基本面':(elapsed<60?'评估估值':'生成报告')))});
+          }
+        }).catch(() => {}); // 网络抖动静默重试
+    }, 3000);
+    this.setData({pollTimer:timer});
+  },
+  // 渲染报告
+  setReport(r) {
+    this.setData({ report:r, market:r.market||'', symbol:r.symbol||'',
+      overall:(r.scores||{}).overall||0, rating:(r.rating||{}).decision||'HOLD' });
+    this.renderTab('overview');
+    this.loadAnalysisHistory();
+  },
+  // 后台静默加载历史（ID回填后更新）
+  loadAnalysisHistory() {
+    app.request('/api/analysis/history?page_size=1').then(d => {
+      if (d.records && d.records.length > 0) {
+        this.setData({_latestId: d.records[0].id});
+      }
+    }).catch(()=>{});
   },
   onTab(e) { this.renderTab(e.currentTarget.dataset.t); },
   renderTab(tab) {
     this.setData({active:tab});
     const r = this.data.report;
+    if (!r) { this.setData({contentHtml:'<p>等待数据加载...</p>'}); return; }
     const sc = r.scores || {}; const rt = r.rating || {}; const co = r.company || {};
     const se = r.sector || {}; const ct = r.catalysts || {}; const ea = r.earnings || {};
     const vl = r.valuation || {}; const rs = r.risks || [];
@@ -47,7 +90,6 @@ Page({ data: { report:{}, market:'', symbol:'', overall:0, rating:'HOLD', active
     this.setData({contentHtml: md.replace(/\n/g,'<br/>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')});
   },
   onBacktest() {
-    // switchTab不支持query参数，用globalData传递
     app.globalData._backtestSymbol = this.data.symbol || '';
     wx.switchTab({url:'/pages/backtest/backtest'});
   }
