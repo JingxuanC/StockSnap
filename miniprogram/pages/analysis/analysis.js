@@ -2,6 +2,15 @@ const app = getApp();
 Page({ data: { report:null, market:'', symbol:'', overall:0, rating:'HOLD', active:'overview', contentHtml:'',
     taskId:'', status:'', elapsed:0, pollTimer:null },
   onLoad(options) {
+    // Agent 对话模式
+    if (options.mode === 'agent' && app.globalData._agentAnswer) {
+      const r = app.globalData._agentAnswer; app.globalData._agentAnswer = null;
+      this.setData({ report:{company:{name:''}, rating:{}, scores:{}},
+        symbol:'', overall:50, rating:'HOLD', active:'overview',
+        contentHtml: '<div style="padding:20rpx;line-height:1.8">'+this.md2html(r.answer||'分析完成')+'</div>' });
+      wx.setNavigationBarTitle({title:'AI 分析'});
+      return;
+    }
     if (options.task_id) {
       this.setData({taskId:options.task_id, symbol:options.symbol||'', status:'pending'});
       this.startPoll();
@@ -92,5 +101,12 @@ Page({ data: { report:null, market:'', symbol:'', overall:0, rating:'HOLD', acti
   onBacktest() {
     app.globalData._backtestSymbol = this.data.symbol || '';
     wx.switchTab({url:'/pages/backtest/backtest'});
+  },
+  // Markdown → HTML
+  md2html(md) {
+    if (!md) return '';
+    return md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>');
   }
 });

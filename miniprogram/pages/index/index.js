@@ -1,22 +1,23 @@
 const app = getApp();
-Page({ data: { markets: [{code:'CN',name:'A股'},{code:'US',name:'美股'}], mi:0, code:'', focus:true, loading:false, quota:null, history:[] },
-  onShow() {
-    app.checkLogin().then(() => { this.loadData(); this.loadQuota(); });
-  },
+Page({ data: { query:'', focus:true, loading:false, quota:null, history:[] },
+  onShow() { app.checkLogin().then(() => { this.loadData(); this.loadQuota(); }); },
   loadQuota() { app.request('/api/subscription/quota').then(d => this.setData({quota:d})).catch(()=>{}); },
   loadData() { app.request('/api/analysis/history').then(d => this.setData({history:d.records||[]})).catch(()=>{}); },
-  onMarket(e) { this.setData({mi:e.detail.value}); },
-  onCode(e) { this.setData({code:e.detail.value.toUpperCase().trim()}); },
-  onAnalyze() {
-    if (!this.data.code || this.data.loading) return;
+  onQuery(e) { this.setData({query:e.detail.value}); },
+  // Agent 对话
+  onChat() {
+    if (!this.data.query || this.data.loading) return;
     this.setData({loading:true});
-    wx.showLoading({title:'提交分析任务...',mask:true});
-    // 异步提交 → 立即返回 task_id
-    app.request('/api/analysis/analyze-async','POST',{market:this.data.markets[this.data.mi].code,symbol:this.data.code})
-      .then(r => { wx.hideLoading(); this.setData({loading:false});
-        wx.navigateTo({url:'/pages/analysis/analysis?task_id='+r.task_id+'&symbol='+this.data.code});
+    wx.showLoading({title:'AI分析中...',mask:true});
+    app.request('/api/agent/chat','POST',{query:this.data.query})
+      .then(r => { wx.hideLoading(); this.setData({loading:false,query:''});
+        app.globalData._agentAnswer = r;
+        wx.navigateTo({url:'/pages/analysis/analysis?mode=agent'});
         this.loadData(); this.loadQuota(); })
-      .catch(e => { wx.hideLoading(); this.setData({loading:false}); wx.showToast({title:e.message||'提交失败',icon:'none'}); });
+      .catch(e => { wx.hideLoading(); this.setData({loading:false}); wx.showToast({title:e.message||'请求失败',icon:'none'}); });
+  },
+  onQuickAsk(e) {
+    this.setData({query:e.currentTarget.dataset.q}); this.onChat();
   },
   onHistory(e) {
     const id = e.currentTarget.dataset.id;

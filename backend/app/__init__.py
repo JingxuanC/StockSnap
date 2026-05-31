@@ -84,9 +84,17 @@ def create_app() -> Flask:
     except Exception as e:
         logger.warning(f'Worker 启动失败（非致命）: {e}')
 
+    # 注册 Agent 工具
+    try:
+        import app.agent.tools
+        app.agent.tools.init_tools()
+        logger.info(f'Agent 工具已注册')
+    except Exception as e:
+        logger.warning(f'Agent 工具注册失败: {e}')
+
     @app.route('/')
     def index():
-        return {'name': 'StockSnap API', 'version': '0.1.1', 'status': 'running'}
+        return {'name': 'StockSnap API', 'version': '0.2.0', 'status': 'running'}
 
     @app.route('/health')
     def health_check():
