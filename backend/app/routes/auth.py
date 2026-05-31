@@ -1,5 +1,6 @@
 """微信小程序登录 API"""
 import os, logging, requests
+from urllib.parse import quote
 from flask import Blueprint, request, jsonify, g
 from app.utils.auth import generate_token, login_required
 from app.utils.db import execute_query, execute_insert
@@ -13,11 +14,11 @@ def wechat_login():
     code = data.get('code', '').strip()
     if not code:
         return jsonify({'code': 400, 'msg': '缺少code参数', 'data': None}), 400
-    # 向微信换取openid
     app_id = os.getenv('WECHAT_APP_ID', '')
     app_secret = os.getenv('WECHAT_APP_SECRET', '')
     try:
-        resp = requests.get(f'https://api.weixin.qq.com/sns/jscode2session?appid={app_id}&secret={app_secret}&js_code={code}&grant_type=authorization_code', timeout=10)
+        url = f'https://api.weixin.qq.com/sns/jscode2session?appid={quote(app_id)}&secret={quote(app_secret)}&js_code={quote(code, safe="")}&grant_type=authorization_code'
+        resp = requests.get(url, timeout=10)
         wx = resp.json()
     except Exception as e:
         logger.error(f"微信API请求失败: {e}")
@@ -32,6 +33,8 @@ def wechat_login():
     else:
         uid = execute_insert("INSERT INTO users (openid, nickname, avatar_url) VALUES (%s, %s, %s) RETURNING id",
                              (openid, data.get('nickname', ''), data.get('avatar_url', '')))
+        if uid is None:
+            return jsonify({'code': 500, 'msg': '创建用户失败', 'data': None}), 500
         user = {'id': uid, 'openid': openid, 'nickname': data.get('nickname', ''), 'avatar_url': data.get('avatar_url', ''), 'is_subscribed': False, 'subscription_expires_at': None}
     token = generate_token(user['id'], openid)
     return jsonify({'code': 0, 'data': {'token': token, 'user': {'id': user['id'], 'nickname': user.get('nickname', ''), 'avatar_url': user.get('avatar_url', ''), 'is_subscribed': bool(user.get('is_subscribed', False)), 'subscription_expires_at': str(user.get('subscription_expires_at')) if user.get('subscription_expires_at') else None}}})

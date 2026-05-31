@@ -30,9 +30,15 @@ def rsi_reversal_signals(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     """RSI超买超卖: period/oversold/overbought 默认14/30/70"""
     p, os, ob = int(params.get("period", 14)), int(params.get("oversold", 30)), int(params.get("overbought", 70))
     df = df.copy(); close = df['close']
-    delta = close.diff(); gain = delta.where(delta > 0, 0.0).rolling(p).mean()
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0).rolling(p).mean()
     loss = (-delta.where(delta < 0, 0.0)).rolling(p).mean()
-    rs = gain / loss.replace(0, np.nan); rsi = 100 - (100 / (1 + rs))
+    # 修复: avg_loss=0时RSI=100, avg_gain=0时RSI=0
+    rsi = pd.Series(50.0, index=df.index)
+    mask = (gain > 0) | (loss > 0)
+    rsi[mask] = 100 - (100 / (1 + gain[mask] / loss[mask]))
+    rsi[loss == 0] = 100.0
+    rsi[gain == 0] = 0.0
     buy = (rsi > os) & (rsi.shift(1) <= os)
     sell = (rsi < ob) & (rsi.shift(1) >= ob)
     df['signal'] = 0; df.loc[buy, 'signal'] = 1; df.loc[sell, 'signal'] = -1

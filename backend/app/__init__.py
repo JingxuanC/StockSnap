@@ -1,8 +1,6 @@
 """StockSnap Flask 应用工厂"""
-import os
-import math
-import logging
-from datetime import date, datetime
+import os, math, logging
+from datetime import date, datetime, timezone
 
 from flask import Flask
 from flask.json.provider import DefaultJSONProvider
@@ -10,15 +8,11 @@ from flask_cors import CORS
 
 from app.config.settings import settings
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-
 class SafeJSONProvider(DefaultJSONProvider):
-    """安全 JSON 序列化：NaN/Inf->null, datetime->ISO8601"""
+    """安全 JSON 序列化：NaN/Inf -> null, datetime -> ISO8601, numpy/pandas -> Python原生"""
 
     @staticmethod
     def _sanitize(obj):
@@ -30,6 +24,18 @@ class SafeJSONProvider(DefaultJSONProvider):
             return obj.strftime('%Y-%m-%dT%H:%M:%SZ')
         if isinstance(obj, date):
             return obj.isoformat()
+        # 处理 numpy/pandas 类型
+        try:
+            import numpy as np
+            if isinstance(obj, (np.integer,)): return int(obj)
+            if isinstance(obj, (np.floating,)): return float(obj) if not np.isnan(obj) and not np.isinf(obj) else None
+            if isinstance(obj, np.ndarray): return obj.tolist()
+        except ImportError: pass
+        try:
+            import pandas as pd
+            if isinstance(obj, pd.Timestamp): return obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+            if isinstance(obj, pd.Period): return str(obj)
+        except ImportError: pass
         if isinstance(obj, dict):
             return {k: SafeJSONProvider._sanitize(v) for k, v in obj.items()}
         if isinstance(obj, (list, tuple)):
@@ -38,9 +44,8 @@ class SafeJSONProvider(DefaultJSONProvider):
 
     def dumps(self, obj, **kwargs):
         import json
-        kwargs.setdefault('default', self.default)
+        kwargs.setdefault('default', str)
         return json.dumps(self._sanitize(obj), **kwargs)
-
 
 def create_app() -> Flask:
     """Flask 应用工厂"""
@@ -50,15 +55,21 @@ def create_app() -> Flask:
     app.json_provider_class = SafeJSONProvider
     app.json = SafeJSONProvider(app)
 
-    CORS(app, origins=settings.CORS_ORIGINS, supports_credentials=True)
-    logger.info(f'CORS 允许的来源: {settings.CORS_ORIGINS}')
+    # CORS: 生产环境不应用通配符 + credentials
+    origins = settings.CORS_ORIGINS
+    if origins == ['*']:
+        logger.warning("CORS origins 为 '*' — 生产环境请设置 CORS_ORIGINS 为具体域名")
+    CORS(app, origins=origins, supports_credentials=(origins != ['*']))
+    logger.info(f'CORS origins: {origins}')
 
+    # 数据库初始化
     try:
         from app.utils.db import init_database
         init_database()
         logger.info('数据库连接池初始化完成')
     except Exception as e:
-        logger.warning(f'数据库初始化警告: {e}')
+        logger.error(f'数据库初始化失败，应用无法启动: {e}')
+        raise RuntimeError(f"数据库初始化失败: {e}") from e
 
     from app.routes import register_routes
     register_routes(app)
@@ -66,10 +77,10 @@ def create_app() -> Flask:
 
     @app.route('/')
     def index():
-        return {'name': 'StockSnap API', 'version': '0.1.0', 'status': 'running'}
+        return {'name': 'StockSnap API', 'version': '0.1.1', 'status': 'running'}
 
     @app.route('/health')
     def health_check():
-        return {'status': 'healthy', 'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}
+        return {'status': 'healthy', 'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
 
     return app

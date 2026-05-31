@@ -2,7 +2,13 @@ const app = getApp();
 const STRATEGIES = [{key:'ma_cross',name:'双均线'},{key:'macd_signal',name:'MACD'},{key:'rsi_reversal',name:'RSI'},{key:'bollinger_breakout',name:'布林带'},{key:'turtle_trend',name:'海龟'}];
 Page({ data: { markets:[{code:'CN',name:'A股'},{code:'US',name:'美股'}], mi:0, code:'', strategies:STRATEGIES, strat:'ma_cross', capital:'100000', running:false, result:null },
   onLoad(options) { if (options.s) this.setData({code:options.s}); },
-  onShow() { app.checkLogin().catch(()=>{}); },
+  onShow() {
+    app.checkLogin().catch(()=>{});
+    if (app.globalData._backtestSymbol) {
+      this.setData({code:app.globalData._backtestSymbol});
+      app.globalData._backtestSymbol = null;
+    }
+  },
   onM(e) { this.setData({mi:e.detail.value}); },
   onCode(e) { this.setData({code:e.detail.value.toUpperCase().trim()}); },
   onStrat(e) { this.setData({strat:e.currentTarget.dataset.s}); },

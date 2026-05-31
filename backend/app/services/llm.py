@@ -1,18 +1,15 @@
 """DeepSeek LLM 服务"""
 import json, os, re
 from openai import OpenAI
-
-_DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
-_DEFAULT_MODEL = "deepseek-chat"
+from app.config.settings import settings
 
 class LLMService:
     def __init__(self):
-        api_key = os.getenv("DEEPSEEK_API_KEY")
+        api_key = settings.DEEPSEEK_API_KEY
         if not api_key:
             raise ValueError("DEEPSEEK_API_KEY 未设置")
-        base_url = os.getenv("DEEPSEEK_BASE_URL", _DEFAULT_BASE_URL)
-        self.model = os.getenv("DEEPSEEK_MODEL", _DEFAULT_MODEL)
-        self.client = OpenAI(api_key=api_key, base_url=base_url.rstrip("/"), timeout=120)
+        self.model = settings.DEEPSEEK_MODEL
+        self.client = OpenAI(api_key=api_key, base_url=settings.DEEPSEEK_BASE_URL, timeout=120)
 
     def chat(self, system_prompt: str, user_prompt: str, temperature: float = 0.3, max_tokens: int = 4096, model: str = None) -> str:
         response = self.client.chat.completions.create(

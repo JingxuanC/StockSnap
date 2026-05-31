@@ -18,8 +18,8 @@ class KlineData:
 @dataclass
 class StockInfo:
     symbol: str
-    name: str
-    market: str
+    name: str = ""
+    market: str = ""
     sector: str = ""
     industry: str = ""
     market_cap: float = 0.0

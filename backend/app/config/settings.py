@@ -21,7 +21,10 @@ class Settings:
 
     @property
     def SECRET_KEY(self) -> str:
-        return os.getenv('SECRET_KEY', 'stocksnap-default-dev-key')
+        key = os.getenv('SECRET_KEY', '')
+        if not key and self.FLASK_ENV == 'production':
+            raise RuntimeError("生产环境必须设置 SECRET_KEY 环境变量")
+        return key or 'stocksnap-dev-key-change-in-production'
 
     @property
     def DATABASE_URL(self) -> str:
