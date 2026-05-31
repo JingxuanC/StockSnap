@@ -3,6 +3,7 @@ import time, logging
 from typing import Dict, Any, List
 from app.services.llm import LLMService
 from app.services.data_collector import MarketDataCollector
+from app.utils.circuit_breaker import deepseek_cb, CircuitBreakerOpenError
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,13 @@ class StockAnalysisService:
         is_zh = str(language).startswith("zh")
         sys_prompt = _SYSTEM_PROMPT_ZH if is_zh else _SYSTEM_PROMPT_EN
         user_prompt = self._build_user_prompt(data, is_zh)
-        # 3. LLM 分析
+        # 3. LLM 分析 (熔断器保护)
         llm_start = time.time()
         try:
-            result = self.llm.chat_json(sys_prompt, user_prompt)
+            result = deepseek_cb.call(lambda: self.llm.chat_json(sys_prompt, user_prompt))
+        except CircuitBreakerOpenError as e:
+            logger.warning(f"DeepSeek 熔断: {e}")
+            return self._build_error_report(market, symbol, language, "AI服务暂时熔断，请稍后重试", start)
         except Exception as e:
             logger.error(f"LLM 失败: {e}")
             result = {"rating": {"decision": "HOLD", "confidence": 50, "summary": f"分析失败: {e}", "key_reasons": []}}
@@ -126,3 +130,14 @@ class StockAnalysisService:
         lines.extend(["## 评分", f"基本面: {rating.get('confidence', 50)} | 技术: {tech} | 综合: {int((rating.get('confidence', 50)+tech)/2)}", ""])
         lines.append("---\n*AI生成，仅供参考，不构成投资建议*")
         return "\n".join(lines)
+
+    def _build_error_report(self, market: str, symbol: str, language: str, error: str, start: float) -> dict:
+        """构建熔断/错误报告"""
+        return {"market": market, "symbol": symbol,
+                "company": {"name": symbol}, "thesis": {}, "sector": {}, "catalysts": {},
+                "earnings": {}, "valuation": {}, "risks": [{"risk": error, "impact": "high", "category": "macro"}],
+                "rating": {"decision": "HOLD", "confidence": 0, "summary": error, "key_reasons": [error]},
+                "scores": {"fundamental": 0, "technical": 50, "overall": 25},
+                "report_markdown": f"# {symbol}\n\n## 错误\n\n{error}\n\n---\n*AI生成，仅供参考*",
+                "model": self.llm.model_name, "analysis_time_seconds": round(time.time() - start, 1),
+                "llm_time_seconds": 0}

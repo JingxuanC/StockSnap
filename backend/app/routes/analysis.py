@@ -4,6 +4,7 @@ from datetime import date
 from flask import Blueprint, request, jsonify, g
 from app.utils.auth import login_required
 from app.utils.db import execute_query, execute_insert, get_db
+from app.utils.rate_limiter import rate_limit
 from app.config.settings import settings
 from app.services.analysis import StockAnalysisService
 
@@ -12,6 +13,7 @@ analysis_bp = Blueprint('analysis', __name__)
 
 @analysis_bp.route('/analyze', methods=['POST'])
 @login_required
+@rate_limit(per_second=1, burst=3)  # 用户: 1次/秒, 突发3次
 def analyze():
     data = request.get_json() or {}
     market = data.get('market', 'CN').strip()

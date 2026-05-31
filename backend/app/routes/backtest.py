@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, request, jsonify, g
 from app.utils.auth import login_required
 from app.utils.db import execute_query, execute_insert, get_db
+from app.utils.rate_limiter import rate_limit
 from app.config.settings import settings
 from app.data_sources.factory import DataSourceFactory
 from app.services.backtest import BacktestService, BacktestConfig
@@ -13,6 +14,7 @@ backtest_bp = Blueprint('backtest', __name__)
 
 @backtest_bp.route('/run', methods=['POST'])
 @login_required
+@rate_limit(per_second=2, burst=5)  # 用户: 2次/秒, 突发5次
 def run_backtest():
     data = request.get_json() or {}
     market = data.get('market', 'CN').strip()

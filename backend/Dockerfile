@@ -21,4 +21,11 @@ ENV PYTHONUNBUFFERED=1
 ENV HOST=0.0.0.0
 ENV PORT=5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "run:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", \
+     "--workers", "4", "--threads", "4", \
+     "--worker-class", "gthread", \
+     "--timeout", "180", "--graceful-timeout", "30", \
+     "--max-requests", "1000", "--max-requests-jitter", "100", \
+     "--keep-alive", "5", \
+     "--access-logfile", "-", "--error-logfile", "-", \
+     "run:app"]

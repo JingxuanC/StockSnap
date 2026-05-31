@@ -46,26 +46,31 @@ def _get_connection_pool():
             raise RuntimeError('psycopg2 未安装')
         db_url = os.getenv('DATABASE_URL', '')
         params = _parse_database_url(db_url)
+        # 高并发: 4 workers × 4 threads × 2 conn/req = 32 peak, 用50上限+超时防死锁
         _connection_pool = pool.ThreadedConnectionPool(
-            minconn=int(os.getenv('DB_POOL_MIN', '2')),
-            maxconn=int(os.getenv('DB_POOL_MAX', '10')),
+            minconn=int(os.getenv('DB_POOL_MIN', '4')),
+            maxconn=int(os.getenv('DB_POOL_MAX', '50')),
             host=params.get('host', 'localhost'),
             port=params.get('port', 5432),
             user=params.get('user', 'stocksnap'),
             password=params.get('password', ''),
             dbname=params.get('dbname', 'stocksnap'),
             connect_timeout=10,
-            options='-c timezone=UTC',
+            options='-c timezone=UTC -c statement_timeout=30000',
         )
     return _connection_pool
 
 @contextmanager
 def get_db():
+    """获取DB连接，超时5秒防死锁"""
     pg_pool = _get_connection_pool()
     conn = None
     broken = False
     try:
         conn = pg_pool.getconn()
+        # 设置语句超时
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '30s'")
         yield conn
         conn.commit()
     except Exception:
@@ -90,7 +95,6 @@ def execute_insert(sql: str, params: tuple = None) -> int:
     with get_db() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, params)
-            conn.commit()
             row = cur.fetchone()
             return row.get('id') if row and cur.rowcount > 0 else None
 
@@ -98,7 +102,6 @@ def execute_update(sql: str, params: tuple = None) -> int:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            conn.commit()
             return cur.rowcount
 
 def init_database():
