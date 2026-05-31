@@ -45,10 +45,22 @@ class AgentEngine:
         self.tools = ToolRegistry.list_for_tier(user_tier)
         self.messages = []
 
-    def run(self, user_query: str, context: dict = None) -> dict:
-        """执行 Agent 循环，返回最终结果"""
+    def run(self, user_query: str, context: dict = None, skills: list[str] = None) -> dict:
+        """执行 Agent 循环，返回最终结果
+        Args:
+            user_query: 用户自然语言问题
+            context: 上下文 {focus_symbol, focus_market}
+            skills: 用户选择的 Skill ID 列表 (注入对应的 system prompt)
+        """
         start = time.time()
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # 构建 system prompt，注入选中的 Skill 指令
+        prompt = SYSTEM_PROMPT
+        if skills:
+            from app.agent.skill_registry import SkillRegistry
+            skill_prompt = SkillRegistry.get_prompt_for_skills(skills, self.user_tier)
+            if skill_prompt:
+                prompt += "\n\n## 用户选择的技能\n" + skill_prompt
+        self.messages = [{"role": "system", "content": prompt}]
         if context and context.get("focus_symbol"):
             self.messages.append({"role": "system", "content": f"用户当前关注的股票: {context['focus_symbol']} ({context.get('focus_market', 'CN')})"})
         self.messages.append({"role": "user", "content": user_query})

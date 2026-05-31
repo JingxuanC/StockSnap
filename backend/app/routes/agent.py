@@ -29,7 +29,8 @@ def chat():
         context['focus_market'] = data.get('market', 'CN')
 
     agent = AgentEngine(user_tier=tier)
-    result = agent.run(query, context)
+    skill_ids = data.get('skills', [])  # 用户选择的Skill
+    result = agent.run(query, context, skills=skill_ids)
     return jsonify({'code': 0, 'data': result})
 
 @agent_bp.route('/tools', methods=['GET'])

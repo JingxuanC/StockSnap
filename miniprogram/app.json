@@ -1,5 +1,5 @@
 {
-  "pages": ["pages/index/index", "pages/analysis/analysis", "pages/backtest/backtest", "pages/mine/mine"],
+  "pages": ["pages/index/index", "pages/analysis/analysis", "pages/backtest/backtest", "pages/mine/mine", "pages/marketplace/marketplace"],
   "window": {
     "navigationBarBackgroundColor": "#16213e", "navigationBarTitleText": "StockSnap",
     "navigationBarTextStyle": "white", "backgroundColor": "#f5f5f5"

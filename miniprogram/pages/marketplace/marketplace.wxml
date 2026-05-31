@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="hero"><text class="title">工具市场</text><text class="sub">当前: {{tier==='pro'?'专业版':'免费版'}} | 已激活 {{activatedCount}} 个 MCP</text></view>
+
+  <!-- Skills -->
+  <view class="section"><view class="sh">💡 Skills</view>
+    <view class="card {{s.accessible?'':'locked'}}" wx:for="{{skills}}" wx:key="id">
+      <view class="top"><text class="icon">{{s.icon}}</text><view class="info"><text class="name">{{s.name}}</text><text class="desc">{{s.description}}</text></view>
+        <view class="tier-badge {{s.tier==='pro'?'pro':'free'}}">{{s.tier==='pro'?'PRO':'免费'}}</view></view>
+      <view class="ex" wx:if="{{s.accessible}}"><text class="ex-t">试试:</text>
+        <text class="ex-q" wx:for="{{s.example_queries}}" wx:key="*this" data-q="{{item}}" bindtap="onUseSkill">{{item}}</text></view>
+      <view class="lock" wx:else><text>🔒 升级专业版解锁</text></view>
+    </view>
+  </view>
+
+  <!-- MCP 服务器 -->
+  <view class="section"><view class="sh">🔌 MCP 服务器</view>
+    <view class="card {{m.accessible?'':'locked'}}" wx:for="{{mcps}}" wx:key="id">
+      <view class="top"><text class="icon">{{m.icon}}</text><view class="info"><text class="name">{{m.name}}</text><text class="desc">{{m.description}}</text></view>
+        <switch checked="{{m.activated}}" disabled="{{!m.accessible}}" bindchange="onToggleMCP" data-id="{{m.id}}" color="#16213e"/></view>
+      <view class="tools" wx:if="{{m.activated}}">工具: {{m.tools.join(', ')}}</view>
+      <view class="lock" wx:elif="{{!m.accessible}}"><text>🔒 PRO</text></view>
+    </view>
+  </view>
+
+  <!-- 升级提示 -->
+  <view class="upgrade" wx:if="{{tier==='free'}}"><button class="btn-accent" bindtap="onUpgrade">🚀 升级专业版解锁全部 MCP + Skill</button></view>
+</view>

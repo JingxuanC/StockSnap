@@ -2,8 +2,9 @@
 每个工具 = OpenAI function calling 格式的定义 + Python 执行函数
 用户订阅等级决定可用工具列表
 """
+from __future__ import annotations
 import json, logging
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)

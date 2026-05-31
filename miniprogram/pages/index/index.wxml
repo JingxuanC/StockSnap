@@ -10,6 +10,7 @@
       <view class="qa" wx:for="{{['分析茅台','NVDA能买吗','筛低估值芯片股','大盘怎么看']}}" wx:key="*this" data-q="{{item}}" bindtap="onQuickAsk">{{item}}</view>
     </view>
     <view class="quota" wx:if="{{quota}}"><text>本月剩余 {{quota.analysis_remaining}} 次</text></view>
+    <navigator url="/pages/marketplace/marketplace" class="market-link">🔌 工具市场 · 管理 MCP & Skill</navigator>
   </view>
   <view class="section"><view class="title">历史</view>
     <block wx:if="{{history.length>0}}">
