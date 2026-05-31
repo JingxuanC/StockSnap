@@ -75,6 +75,15 @@ def create_app() -> Flask:
     register_routes(app)
     logger.info('所有路由注册完成')
 
+    # 启动后台任务 Worker
+    try:
+        from app.utils.task_queue import start_workers
+        import app.services.task_handlers  # 注册任务处理器
+        start_workers()
+        logger.info('后台任务 Worker 已启动')
+    except Exception as e:
+        logger.warning(f'Worker 启动失败（非致命）: {e}')
+
     @app.route('/')
     def index():
         return {'name': 'StockSnap API', 'version': '0.1.1', 'status': 'running'}
