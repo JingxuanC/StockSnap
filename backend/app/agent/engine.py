@@ -27,13 +27,23 @@ SYSTEM_PROMPT = """你是 StockSnap AI 股票分析助手，运行在微信小�
 6. 用工具返回的真实数据，不要编造
 7. 如果工具返回错误，如实告知用户
 
-## 输出格式
-最终回答使用 Markdown 格式，包含清晰的标题和分段。
-评级使用: 🟢买入 / 🟡持有 / 🔴卖出
-"""
+## 搜索策略
+- search_stock 支持模糊搜索，直接搜名称或代码即可
+- 搜到结果后直接用代码(symbol)调用后续工具
+- 不要反复搜索同一个标的
 
-MAX_TOOL_ROUNDS = 8   # 最多8轮工具调用
-MAX_TOTAL_TIME = 150  # 总共150秒超时
+## 分析策略
+- deep_analyze 返回原始数据，agent需自行解读
+- 结合 technical_analyze + run_backtest 形成综合判断
+- 数据驱动，不编造信息
+
+## 输出格式
+最终回答使用 Markdown，务必包含: 公司概况、估值分析、技术面判断、回测结果、综合评级
+评级: 🟢买入 / 🟡持有 / 🔴卖出
+回答必须具体，不能空白。"""
+
+MAX_TOOL_ROUNDS = 5   # 最多5轮（减少无意义重试）
+MAX_TOTAL_TIME = 240  # 4分钟
 
 class AgentEngine:
     """ReAct Agent: Think → Act → Observe → Think → ... → Answer"""
@@ -72,7 +82,7 @@ class AgentEngine:
             try:
                 response = self.client.chat.completions.create(
                     model=self.model, messages=self.messages, tools=self.tools or None,
-                    tool_choice="auto" if self.tools else None, temperature=0.3, max_tokens=2048)
+                    tool_choice="auto" if self.tools else None, temperature=0.3, max_tokens=4096)
             except Exception as e:
                 logger.error(f"Agent LLM调用失败: {e}")
                 return {"error": f"AI服务异常: {e}", "rounds": tool_rounds, "time": time.time() - start}

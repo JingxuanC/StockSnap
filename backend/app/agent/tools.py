@@ -1,8 +1,44 @@
 """内置工具集 - Agent 可直接调用的股票分析工具"""
-import json, logging
+import json, logging, time
 from app.agent.tool_registry import ToolRegistry, tool
 
 logger = logging.getLogger(__name__)
+
+# ---- 全局缓存 (避免重复下载全市场数据) ----
+_stock_list_cache: dict = {}    # {market: (timestamp, [stocks])}
+_CACHE_TTL = 3600               # 1小时
+
+def _get_stock_list(market: str):
+    """获取股票列表（带缓存）"""
+    now = time.time()
+    if market in _stock_list_cache:
+        ts, data = _stock_list_cache[market]
+        if now - ts < _CACHE_TTL:
+            return data
+    from app.data_sources.factory import DataSourceFactory
+    source = DataSourceFactory.get_source(market)
+    # 用 spot 数据做搜索基础
+    data = source.search_symbols("")  # 空搜索=全量
+    _stock_list_cache[market] = (now, data)
+    logger.info(f"[缓存] 股票列表已缓存: {market}, {len(data)} 只")
+    return data
+
+def _fast_search(keyword: str, market: str) -> list:
+    """快速搜索：缓存列表中匹配"""
+    all_stocks = _get_stock_list(market)
+    if not all_stocks:
+        from app.data_sources.factory import DataSourceFactory
+        return DataSourceFactory.get_source(market).search_symbols(keyword)[:10]
+    kw = keyword.strip().upper()
+    results = []
+    for s in all_stocks:
+        sym = str(s.get('symbol', '')).upper()
+        name = str(s.get('name', '')).upper()
+        if kw in sym or kw in name:
+            results.append(s)
+            if len(results) >= 10:
+                break
+    return results
 
 # ==================== 数据类工具 ====================
 
@@ -12,10 +48,10 @@ logger = logging.getLogger(__name__)
        "required": ["keyword"]},
       tier="free", category="data")
 def search_stock(keyword: str, market: str = "CN"):
-    from app.data_sources.factory import DataSourceFactory
-    source = DataSourceFactory.get_source(market)
-    results = source.search_symbols(keyword)[:10]
-    return {"found": len(results), "stocks": results}
+    if not keyword or not keyword.strip():
+        return {"found": 0, "stocks": []}
+    results = _fast_search(keyword, market)
+    return {"found": len(results), "stocks": results[:10]}
 
 @tool("get_kline", "获取股票K线数据，返回最近N日OHLCV",
       {"type": "object", "properties": {"symbol": {"type": "string", "description": "股票代码"},
@@ -59,20 +95,29 @@ def get_stock_info(symbol: str, market: str = "CN"):
 
 # ==================== 分析类工具 ====================
 
-@tool("deep_analyze", "使用AI对股票进行深度基本面分析，返回投资论点/行业/催化剂/财报/估值/风险完整报告",
+@tool("deep_analyze", "获取股票基本面数据快照（估值/财务/行业信息），Agent自行分析而非调用嵌套LLM",
       {"type": "object", "properties": {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "US"], "default": "CN"}},
        "required": ["symbol"]},
       tier="free", category="analysis")
 def deep_analyze(symbol: str, market: str = "CN"):
-    from app.services.analysis import StockAnalysisService
-    svc = StockAnalysisService()
-    result = svc.analyze(market, symbol)
-    rating = result.get("rating", {})
-    scores = result.get("scores", {})
-    return {"symbol": symbol, "rating": rating.get("decision"), "confidence": rating.get("confidence"),
-            "overall_score": scores.get("overall"), "summary": rating.get("summary", ""),
-            "key_reasons": rating.get("key_reasons", []),
-            "risks": [r.get("risk") if isinstance(r, dict) else r for r in result.get("risks", [])[:3]]}
+    """只收集数据，不做LLM分析（Agent自己就是LLM）"""
+    from app.data_sources.factory import DataSourceFactory
+    source = DataSourceFactory.get_source(market)
+    info = source.get_stock_info(symbol)
+    fundamentals = source.get_fundamentals(symbol)
+    kline = source.get_kline(symbol, "1d", 20)
+    closes = kline.data['close'].tolist() if kline and not kline.data.empty else []
+    return {
+        "symbol": symbol,
+        "name": info.name, "industry": info.industry,
+        "market_cap": info.market_cap, "pe": info.pe_ratio, "pb": info.pb_ratio,
+        "roe": fundamentals.roe, "debt_ratio": fundamentals.debt_ratio,
+        "revenue_growth": fundamentals.revenue_growth, "profit_growth": fundamentals.profit_growth,
+        "latest_price": closes[-1] if closes else 0,
+        "price_5d_ago": closes[-5] if len(closes) >= 5 else 0,
+        "price_20d_ago": closes[-20] if len(closes) >= 20 else 0,
+        "hint": "Agent请基于以上数据自行分析，不要再次调用此工具。用 technical_analyze 补充技术面，用 run_backtest 补充回测。"
+    }
 
 @tool("technical_analyze", "快速技术分析：计算RSI/MACD/均线，评估趋势和买卖信号",
       {"type": "object", "properties": {"symbol": {"type": "string"}, "market": {"type": "string", "enum": ["CN", "US"], "default": "CN"}},
