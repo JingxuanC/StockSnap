@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="card"><view class="title">股票信息</view>
+    <picker class="picker" range="{{markets}}" range-key="name" value="{{mi}}" bindchange="onM"><view>{{markets[mi].name}} ▾</view></picker>
+    <input class="input" placeholder="代码 000001" value="{{code}}" bindinput="onCode"/></view>
+  <view class="card"><view class="title">策略选择</view>
+    <view class="strats"><view class="s{{strat===s?' act':''}}" wx:for="{{strategies}}" wx:key="*this" data-s="{{s}}" bindtap="onStrat">{{s.name}}</view></view></view>
+  <view class="card"><view class="title">参数</view>
+    <view class="row"><text>初始资金</text><input class="rinput" value="{{capital}}" bindinput="onCap"/></view></view>
+  <button class="btn-accent" bindtap="onRun" disabled="{{!code||running}}">{{running?'回测中...':'开始回测'}}</button>
+  <view wx:if="{{result}}" class="results">
+    <view class="title">回测结果</view>
+    <view class="grid">
+      <view class="gitem"><text class="gv {{result.totalReturnPct>=0?'score-high':'score-low'}}">{{result.totalReturnPct}}%</text><text class="gl">总收益</text></view>
+      <view class="gitem"><text class="gv">{{result.sharpeRatio}}</text><text class="gl">夏普</text></view>
+      <view class="gitem"><text class="gv score-low">{{result.maxDrawdownPct}}%</text><text class="gl">最大回撤</text></view>
+      <view class="gitem"><text class="gv">{{result.winRate}}%</text><text class="gl">胜率</text></view>
+      <view class="gitem"><text class="gv">{{result.totalTrades}}</text><text class="gl">交易次数</text></view>
+      <view class="gitem"><text class="gv">{{result.profitFactor}}</text><text class="gl">盈亏比</text></view>
+    </view>
+  </view>
+</view>

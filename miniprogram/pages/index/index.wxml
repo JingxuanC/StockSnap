@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="hero"><text class="logo">StockSnap</text><text class="sub">AI 智能股票分析</text></view>
+  <view class="search-box">
+    <view class="row">
+      <picker class="market" range="{{markets}}" range-key="name" value="{{mi}}" bindchange="onMarket"><view class="pick">{{markets[mi].name}} ▾</view></picker>
+      <input class="code" placeholder="输入代码如 000001" value="{{code}}" bindinput="onCode" bindconfirm="onAnalyze" focus="{{focus}}"/>
+    </view>
+    <button class="btn-accent" bindtap="onAnalyze" disabled="{{!code||loading}}">{{loading?'分析中...':'开始分析'}}</button>
+    <view class="quota" wx:if="{{quota}}"><text>本月剩余 {{quota.analysis_remaining}} 次分析</text></view>
+  </view>
+  <view class="section"><view class="title">最近分析</view>
+    <block wx:if="{{history.length>0}}">
+      <view class="item" wx:for="{{history}}" wx:key="id" data-id="{{item.id}}" bindtap="onHistory">
+        <view class="left"><text class="sym">{{item.symbol}}</text><text class="na">{{item.company_name}}</text><text class="dt">{{item.created_at}}</text></view>
+        <view class="right"><view class="badge {{item.score>=70?'score-high':(item.score>=40?'score-mid':'score-low')}}"><text>{{item.score}}</text></view></view>
+      </view>
+    </block>
+    <view wx:else class="empty"><text>暂无分析记录</text></view>
+  </view>
+</view>

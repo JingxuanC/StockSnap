@@ -1,0 +1,17 @@
+.page { min-height:100vh; padding-bottom:40rpx; }
+.header { background:linear-gradient(135deg,#16213e,#0f3460); padding:60rpx 40rpx; display:flex; flex-direction:column; align-items:center; border-radius:0 0 48rpx 48rpx; }
+.avat { font-size:80rpx; margin-bottom:16rpx; }
+.uname { font-size:36rpx; color:#fff; font-weight:600; }
+.badge { margin-top:12rpx; background:rgba(255,255,255,0.15); padding:8rpx 32rpx; border-radius:50rpx; }
+.badge text { color:rgba(255,255,255,0.9); font-size:24rpx; }
+.card { background:#fff; margin:20rpx 30rpx; border-radius:20rpx; padding:30rpx; box-shadow:0 2rpx 8rpx rgba(0,0,0,0.04); }
+.title { font-size:32rpx; font-weight:600; color:#16213e; margin-bottom:24rpx; }
+.qi { display:flex; justify-content:space-between; padding:16rpx 0; font-size:28rpx; }
+.plan { padding:24rpx; border-radius:16rpx; border:2rpx solid #eee; margin-bottom:16rpx; }
+.plan.act { border-color:#16213e; background:#f8f9ff; }
+.ptop { display:flex; justify-content:space-between; }
+.pn { font-size:30rpx; font-weight:600; }
+.pp { font-size:36rpx; font-weight:800; color:#16213e; }
+.pd { font-size:24rpx; color:#636e72; margin-top:4rpx; }
+.about { font-size:26rpx; color:#636e72; }
+.btn-accent { margin-top:20rpx; width:100%; }

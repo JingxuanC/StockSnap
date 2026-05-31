@@ -1,0 +1,13 @@
+<view class="page">
+  <view class="header"><view class="avat">👤</view><text class="uname">用户</text><view class="badge"><text>{{quota.is_subscribed?'会员':'免费用户'}}</text></view></view>
+  <view class="card"><view class="title">本月额度</view>
+    <view class="qi"><text>📊 分析</text><text>{{quota.analysis_used}}/{{quota.analysis_limit}}</text></view>
+    <view class="qi"><text>📈 回测</text><text>{{quota.backtest_used}}/{{quota.backtest_limit}}</text></view>
+  </view>
+  <view class="card"><view class="title">升级会员</view>
+    <view class="plan {{selPlan==='monthly'?'act':''}}" data-p="monthly" bindtap="onPlan"><view class="ptop"><text class="pn">月度会员</text><text class="pp">¥29</text></view><text class="pd">无限分析+回测</text></view>
+    <view class="plan {{selPlan==='yearly'?'act':''}}" data-p="yearly" bindtap="onPlan"><view class="ptop"><text class="pn">年度会员</text><text class="pp">¥199</text></view><text class="pd">享受55%优惠</text></view>
+    <button class="btn-accent" bindtap="onSubscribe">立即订阅</button>
+  </view>
+  <view class="card"><view class="title">关于</view><text class="about">StockSnap v0.1.0 — AI智能股票分析+回测平台</text></view>
+</view>

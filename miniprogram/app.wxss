@@ -1,0 +1,5 @@
+page { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; color: #2d3436; background: #f5f6fa; }
+.card { background: #fff; border-radius: 12rpx; padding: 24rpx; margin: 20rpx; box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06); }
+.btn-primary { background: linear-gradient(135deg, #16213e, #0f3460); color: #fff; border: none; border-radius: 12rpx; padding: 24rpx; font-size: 32rpx; font-weight: 600; text-align: center; }
+.btn-accent { background: linear-gradient(135deg, #e94560, #c0392b); color: #fff; border: none; border-radius: 12rpx; padding: 24rpx; font-size: 32rpx; font-weight: 600; text-align: center; }
+.score-high { color: #00b894; } .score-mid { color: #fdcb6e; } .score-low { color: #e17055; }
