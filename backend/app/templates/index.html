@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StockSnap — AI 股票分析助手</title>
+<style>
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e1e4e8;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d2991d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'SF Pro Display','PingFang SC',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+.app{max-width:900px;margin:0 auto;padding:16px}
+.header{text-align:center;padding:40px 0 24px}
+.header h1{font-size:28px;font-weight:800;letter-spacing:-0.5px}
+.header span{color:var(--muted);font-size:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.chat-input{display:flex;gap:8px}
+.chat-input input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text);font-size:15px;outline:none}
+.chat-input input:focus{border-color:var(--accent)}
+.btn{padding:10px 20px;border-radius:8px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.85}
+.btn-accent{background:var(--red);color:#fff}
+.btn-accent:hover{opacity:.85}
+.msg{margin-bottom:12px;padding:12px 16px;border-radius:8px;animation:fadeIn .3s}
+.msg.user{background:var(--card);border:1px solid var(--border)}
+.msg.agent{background:#161b22;border:1px solid var(--accent)}
+.msg.error{background:#2d1518;border:1px solid var(--red);color:var(--red)}
+.msg .role{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.msg .content{font-size:14px;white-space:pre-wrap;word-break:break-word}
+.msg .content h2{font-size:18px;margin:12px 0 6px;color:var(--accent)}
+.msg .content h3{font-size:15px;margin:8px 0 4px}
+.meta{display:flex;gap:16px;font-size:12px;color:var(--muted)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+.metric{text-align:center;padding:12px;background:var(--bg);border-radius:8px}
+.metric .val{font-size:20px;font-weight:700}
+.metric .label{font-size:11px;color:var(--muted);margin-top:2px}
+.tabs{display:flex;gap:4px;margin-bottom:16px;overflow-x:auto}
+.tab{padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;background:var(--bg);border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.login{max-width:360px;margin:100px auto;text-align:center}
+.login input{width:100%;margin-bottom:12px}
+.hidden{display:none}
+.loading{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:600px){.app{padding:8px}.header{padding:24px 0 16px}.chat-input{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Login -->
+  <div id="loginPage" class="login">
+    <h1>StockSnap 📊</h1>
+    <p style="color:var(--muted);margin:8px 0 24px">AI 股票分析助手</p>
+    <input id="password" type="password" placeholder="输入密码..." class="btn" style="background:var(--card);color:var(--text)">
+    <button onclick="login()" class="btn btn-primary" style="width:100%;margin-top:8px">登录</button>
+    <p id="loginError" style="color:var(--red);font-size:13px;margin-top:8px"></p>
+  </div>
+
+  <!-- Main App -->
+  <div id="mainApp" class="hidden">
+    <div class="header"><h1>StockSnap</h1><span>AI 股票分析助手 · 基于 DeepSeek</span></div>
+
+    <div class="tabs" id="tabs">
+      <div class="tab active" onclick="switchTab('chat')">💬 对话</div>
+      <div class="tab" onclick="switchTab('backtest')">📈 回测</div>
+      <div class="tab" onclick="switchTab('tools')">🔧 工具</div>
+      <div class="tab" onclick="switchTab('metrics')">📊 指标</div>
+    </div>
+
+    <!-- Chat Tab -->
+    <div id="tab-chat">
+      <div class="card" id="chatMessages" style="max-height:60vh;overflow-y:auto;min-height:200px">
+        <div class="msg agent"><div class="content">你好！我是 StockSnap AI 分析助手。<br><br>可以直接问我：<br>• 分析茅台现在能买吗<br>• AAPL估值合理吗<br>• 帮我回测000001的MACD策略<br>• 最近有什么值得关注的科技股</div></div>
+        <div id="chatLoading" class="hidden"><span class="loading"></span> AI 正在分析...</div>
+      </div>
+      <div class="chat-input">
+        <input id="chatQuery" placeholder="输入问题，如: 分析茅台现在能不能买" onkeydown="if(event.key==='Enter')chat()">
+        <button class="btn btn-primary" onclick="chat()">发送</button>
+      </div>
+    </div>
+
+    <!-- Backtest Tab -->
+    <div id="tab-backtest" class="hidden">
+      <div class="card">
+        <h3 style="margin-bottom:12px">策略回测</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label style="font-size:12px;color:var(--muted)">股票代码</label><input id="btSymbol" placeholder="000001" class="btn" style="width:100%;background:var(--bg);color:var(--text);margin-top:4px"></div>
+          <div><label style="font-size:12px;color:var(--muted)">市场</label><select id="btMarket" class="btn" style="width:100%;background:var(--bg);color:var(--text);margin-top:4px"><option value="CN">A股</option><option value="US">美股</option></select></div>
+          <div><label style="font-size:12px;color:var(--muted)">策略</label><select id="btStrategy" class="btn" style="width:100%;background:var(--bg);color:var(--text);margin-top:4px"><option value="ma_cross">双均线</option><option value="macd_signal">MACD</option><option value="rsi_reversal">RSI</option><option value="bollinger_breakout">布林带</option><option value="turtle_trend">海龟</option></select></div>
+          <div><label style="font-size:12px;color:var(--muted)">初始资金</label><input id="btCapital" value="100000" class="btn" style="width:100%;background:var(--bg);color:var(--text);margin-top:4px"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="runBacktest()">开始回测</button>
+        <div id="btResult" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- Tools Tab -->
+    <div id="tab-tools" class="hidden">
+      <div class="card" id="toolsContent"><span style="color:var(--muted)">加载中...</span></div>
+    </div>
+
+    <!-- Metrics Tab -->
+    <div id="tab-metrics" class="hidden">
+      <div class="card" id="metricsContent"><span style="color:var(--muted)">加载中...</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let token = localStorage.getItem('stocksnap_token') || '';
+
+function api(url, method='GET', body=null) {
+  const opts = {method, headers:{'Content-Type':'application/json'}};
+  if (token) opts.headers['Authorization'] = 'Bearer '+token;
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(API+url, opts).then(r => r.json());
+}
+
+// Auth
+async function login() {
+  const pw = document.getElementById('password').value;
+  try {
+    const r = await api('/api/auth/login', 'POST', {password:pw});
+    if (r.code===0) { token = r.data.token; localStorage.setItem('stocksnap_token',token);
+      document.getElementById('loginPage').classList.add('hidden');
+      document.getElementById('mainApp').classList.remove('hidden');
+      loadTools(); loadMetrics(); }
+    else document.getElementById('loginError').textContent = r.msg;
+  } catch(e) { document.getElementById('loginError').textContent = '连接失败'; }
+}
+if (token) api('/api/auth/status').then(r => { if (r.data?.logged_in) {
+  document.getElementById('loginPage').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  loadTools(); loadMetrics();
+}});
+
+// Chat
+async function chat() {
+  const input = document.getElementById('chatQuery');
+  const q = input.value.trim(); if (!q) return;
+  input.value = '';
+  const msgs = document.getElementById('chatMessages');
+  msgs.innerHTML += `<div class="msg user"><div class="content">${q}</div></div>`;
+  document.getElementById('chatLoading').classList.remove('hidden');
+  msgs.scrollTop = msgs.scrollHeight;
+  try {
+    const r = await api('/api/agent/chat', 'POST', {query:q});
+    document.getElementById('chatLoading').classList.add('hidden');
+    const cls = r.code===0 ? 'agent' : 'error';
+    const text = r.data?.answer || JSON.stringify(r);
+    const meta = r.data ? `⏱ ${r.data.time_seconds?.toFixed(1)}s · 🔧 ${r.data.tool_calls}工具 · 🪙 ${r.data.tokens}tok · ¥${r.data.cost_rmb}` : '';
+    msgs.innerHTML += `<div class="msg ${cls}"><div class="role">${cls==='agent'?'Agent':'错误'}</div><div class="content">${text}</div>${meta?`<div class="meta">${meta}</div>`:''}</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+    loadMetrics();
+  } catch(e) {
+    document.getElementById('chatLoading').classList.add('hidden');
+    msgs.innerHTML += `<div class="msg error"><div class="content">网络错误: ${e.message}</div></div>`;
+  }
+}
+
+// Backtest
+async function runBacktest() {
+  const symbol = document.getElementById('btSymbol').value.trim();
+  if (!symbol) return;
+  const res = document.getElementById('btResult');
+  res.innerHTML = '<span class="loading"></span> 回测中...';
+  try {
+    const r = await api('/api/backtest/run', 'POST', {
+      symbol, market: document.getElementById('btMarket').value,
+      strategy: document.getElementById('btStrategy').value,
+      initial_capital: parseFloat(document.getElementById('btCapital').value)||100000
+    });
+    if (r.code===0 && r.data) {
+      const d = r.data;
+      res.innerHTML = `<div class="metrics">
+        <div class="metric"><div class="val" style="color:${d.totalReturnPct>=0?'var(--green)':'var(--red)'}">${d.totalReturnPct}%</div><div class="label">总收益</div></div>
+        <div class="metric"><div class="val">${d.sharpeRatio}</div><div class="label">夏普</div></div>
+        <div class="metric"><div class="val" style="color:var(--red)">${d.maxDrawdownPct}%</div><div class="label">最大回撤</div></div>
+        <div class="metric"><div class="val">${d.winRate}%</div><div class="label">胜率</div></div>
+        <div class="metric"><div class="val">${d.totalTrades}</div><div class="label">交易次数</div></div>
+        <div class="metric"><div class="val">${d.profitFactor}</div><div class="label">盈亏比</div></div>
+      </div>`;
+    } else res.innerHTML = `<span style="color:var(--red)">${r.msg||'回测失败'}</span>`;
+  } catch(e) { res.innerHTML = `<span style="color:var(--red)">错误: ${e.message}</span>`; }
+}
+
+// Tools & Metrics
+async function loadTools() {
+  try {
+    const r = await api('/api/marketplace/my-toolkit');
+    if (r.code!==0) return;
+    const d = r.data;
+    let h = `<h3 style="margin-bottom:12px">工具包 (${d.tier})</h3>`;
+    h += '<div style="font-size:13px">';
+    if (d.mcps) d.mcps.forEach(m => h += `<div style="padding:4px 0">${m.icon} ${m.name} ${m.activated?'✅':'❌'}</div>`);
+    h += '</div><h3 style="margin:16px 0 12px">Skills</h3><div style="font-size:13px">';
+    if (d.skills) d.skills.forEach(s => h += `<div style="padding:4px 0">${s.icon} ${s.name} <span style="color:var(--muted)">${s.accessible?'':'🔒'}</span></div>`);
+    h += '</div>';
+    document.getElementById('toolsContent').innerHTML = h;
+  } catch(e) {}
+}
+async function loadMetrics() {
+  try {
+    const r = await api('/api/agent/metrics');
+    if (r.code!==0) return;
+    const m = r.data.agent_metrics||{};
+    document.getElementById('metricsContent').innerHTML = `<div class="metrics">
+      <div class="metric"><div class="val">${m.sessions||0}</div><div class="label">总会话</div></div>
+      <div class="metric"><div class="val">${m.llm_calls||0}</div><div class="label">LLM调用</div></div>
+      <div class="metric"><div class="val">${m.tool_calls||0}</div><div class="label">工具调用</div></div>
+      <div class="metric"><div class="val">${m.total_tokens||0}</div><div class="label">总Tokens</div></div>
+      <div class="metric"><div class="val">¥${(m.total_cost_rmb||0).toFixed(6)}</div><div class="label">总花费</div></div>
+      <div class="metric"><div class="val">${m.latency_p50_ms||0}ms</div><div class="label">P50延迟</div></div>
+    </div>`;
+  } catch(e) {}
+}
+
+function switchTab(name) {
+  ['chat','backtest','tools','metrics'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t!==name);
+  });
+  document.querySelectorAll('.tab').forEach((el,i) => {
+    el.classList.toggle('active', ['chat','backtest','tools','metrics'][i]===name);
+  });
+  if (name==='tools') loadTools();
+  if (name==='metrics') loadMetrics();
+}
+</script>
+</body>
+</html>

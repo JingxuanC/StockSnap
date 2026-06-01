@@ -83,7 +83,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "127.0.0.1:5000:5000"
+      - "5000:5000"
     env_file:
       - ./backend/.env
     environment:

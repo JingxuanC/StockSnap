@@ -8,7 +8,9 @@ def register_routes(app: Flask):
     from app.routes.backtest import backtest_bp
     from app.routes.subscription import subscription_bp
     from app.routes.marketplace import marketplace_bp
+    from app.routes.web import web_bp
 
+    app.register_blueprint(web_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(agent_bp, url_prefix='/api/agent')
     app.register_blueprint(analysis_bp, url_prefix='/api/analysis')
