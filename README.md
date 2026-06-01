@@ -1,6 +1,6 @@
 # StockSnap 📊
 
-> AI 驱动的智能股票分析微信小程序 — 一键生成深度研报 + 策略回测
+> AI 驱动的股票分析 Agent — DeepSeek 自主调用工具，生成深度研报 + 策略回测。自托管，个人使用。
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-green.svg)](https://www.python.org/)
@@ -74,56 +74,31 @@
 ## 🚀 快速开始
 
 ### 前提条件
-- Docker & Docker Compose
-- DeepSeek API Key（[获取地址](https://platform.deepseek.com/)）
-- 微信小程序 AppID（[注册地址](https://mp.weixin.qq.com/)）
+- Python 3.10+ 或 Docker
+- DeepSeek API Key（[获取](https://platform.deepseek.com/)）
 
-### 1. 克隆项目
+### 本地运行
 
 ```bash
 git clone https://github.com/JingxuanC/StockSnap.git
-cd StockSnap
+cd StockSnap/backend
+cp .env.example .env
+# 编辑 .env: 填 DEEPSEEK_API_KEY, 改 SECRET_KEY
+
+pip install -r requirements.txt
+python run.py
+# 打开 http://localhost:5000 → 输入密码 stocksnap → 开始使用
 ```
 
-### 2. 配置环境变量
+### Docker 部署
 
 ```bash
 cp backend/.env.example backend/.env
-```
+# 编辑 backend/.env: 填 DEEPSEEK_API_KEY
 
-编辑 `backend/.env`，填入关键配置：
-
-```bash
-# 必填
-SECRET_KEY=你的随机密钥      # python3 -c "import secrets; print(secrets.token_hex(32))"
-DEEPSEEK_API_KEY=sk-xxx      # DeepSeek API Key
-
-# 微信小程序（本地开发可选）
-WECHAT_APP_ID=wx0000000000
-WECHAT_APP_SECRET=your_secret
-
-# 其他保持默认即可
-```
-
-### 3. 启动后端
-
-```bash
 docker compose up -d
+# 打开 http://your-server:5000
 ```
-
-验证：
-
-```bash
-curl http://localhost:5000/health
-# → {"status":"healthy","timestamp":"..."}
-```
-
-### 4. 启动小程序
-
-1. 下载[微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)
-2. 打开 `miniprogram/` 目录
-3. 在 `app.js` 中将 `baseUrl` 改为你的后端地址
-4. 点击「编译」即可预览
 
 ---
 
