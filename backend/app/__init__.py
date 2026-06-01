@@ -12,34 +12,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger(__name__)
 
 class SafeJSONProvider(DefaultJSONProvider):
-    """安全 JSON 序列化：NaN/Inf -> null, datetime -> ISO8601, numpy/pandas -> Python原生"""
-
     @staticmethod
     def _sanitize(obj):
         if isinstance(obj, float):
-            if math.isnan(obj) or math.isinf(obj):
-                return None
+            if math.isnan(obj) or math.isinf(obj): return None
             return obj
-        if isinstance(obj, datetime):
-            return obj.strftime('%Y-%m-%dT%H:%M:%SZ')
-        if isinstance(obj, date):
-            return obj.isoformat()
-        # 处理 numpy/pandas 类型
+        if isinstance(obj, datetime): return obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+        if isinstance(obj, date): return obj.isoformat()
         try:
             import numpy as np
-            if isinstance(obj, (np.integer,)): return int(obj)
-            if isinstance(obj, (np.floating,)): return float(obj) if not np.isnan(obj) and not np.isinf(obj) else None
+            if isinstance(obj, np.integer): return int(obj)
+            if isinstance(obj, np.floating): return float(obj) if not np.isnan(obj) and not np.isinf(obj) else None
             if isinstance(obj, np.ndarray): return obj.tolist()
         except ImportError: pass
         try:
             import pandas as pd
             if isinstance(obj, pd.Timestamp): return obj.strftime('%Y-%m-%dT%H:%M:%SZ')
-            if isinstance(obj, pd.Period): return str(obj)
         except ImportError: pass
-        if isinstance(obj, dict):
-            return {k: SafeJSONProvider._sanitize(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
-            return [SafeJSONProvider._sanitize(v) for v in obj]
+        if isinstance(obj, dict): return {k: SafeJSONProvider._sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)): return [SafeJSONProvider._sanitize(v) for v in obj]
         return obj
 
     def dumps(self, obj, **kwargs):
@@ -48,56 +39,53 @@ class SafeJSONProvider(DefaultJSONProvider):
         return json.dumps(self._sanitize(obj), **kwargs)
 
 def create_app() -> Flask:
-    """Flask 应用工厂"""
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = settings.SECRET_KEY
-    app.config['JSON_AS_ASCII'] = False
-    app.json_provider_class = SafeJSONProvider
-    app.json = SafeJSONProvider(app)
+    flask_app = Flask(__name__)
+    flask_app.config['SECRET_KEY'] = settings.SECRET_KEY
+    flask_app.config['JSON_AS_ASCII'] = False
+    flask_app.json_provider_class = SafeJSONProvider
+    flask_app.json = SafeJSONProvider(flask_app)
 
-    # CORS: 生产环境不应用通配符 + credentials
     origins = settings.CORS_ORIGINS
     if origins == ['*']:
         logger.warning("CORS origins 为 '*' — 生产环境请设置 CORS_ORIGINS 为具体域名")
-    CORS(app, origins=origins, supports_credentials=(origins != ['*']))
+    CORS(flask_app, origins=origins, supports_credentials=(origins != ['*']))
     logger.info(f'CORS origins: {origins}')
 
-    # 数据库初始化
+    # 数据库可选
     try:
         from app.utils.db import init_database
         init_database()
         logger.info('数据库连接池初始化完成')
     except Exception as e:
-        logger.error(f'数据库初始化失败，应用无法启动: {e}')
-        raise RuntimeError(f"数据库初始化失败: {e}") from e
+        logger.warning(f'数据库不可用，运行在无DB模式: {e}')
 
     from app.routes import register_routes
-    register_routes(app)
+    register_routes(flask_app)
     logger.info('所有路由注册完成')
 
-    # 启动后台任务 Worker
+    # 后台 Worker
     try:
         from app.utils.task_queue import start_workers
-        import app.services.task_handlers  # 注册任务处理器
+        import app.services.task_handlers
         start_workers()
         logger.info('后台任务 Worker 已启动')
     except Exception as e:
-        logger.warning(f'Worker 启动失败（非致命）: {e}')
+        logger.warning(f'Worker 启动失败: {e}')
 
-    # 注册 Agent 工具
+    # Agent 工具
     try:
-        import app.agent.tools
-        app.agent.tools.init_tools()
-        logger.info(f'Agent 工具已注册')
+        from app.agent.tools import init_tools as _init_tools
+        _init_tools()
+        logger.info('Agent 工具已注册')
     except Exception as e:
         logger.warning(f'Agent 工具注册失败: {e}')
 
-    @app.route('/')
+    @flask_app.route('/')
     def index():
         return {'name': 'StockSnap API', 'version': '0.2.0', 'status': 'running'}
 
-    @app.route('/health')
+    @flask_app.route('/health')
     def health_check():
         return {'status': 'healthy', 'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
 
-    return app
+    return flask_app

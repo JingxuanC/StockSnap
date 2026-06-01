@@ -20,9 +20,12 @@ def chat():
     query = data.get('query', '').strip()
     if not query:
         return jsonify({'code': 400, 'msg': '请输入你想了解的问题', 'data': None}), 400
-    from app.utils.db import execute_query
-    u = execute_query("SELECT is_subscribed FROM users WHERE id = %s", (g.user_id,))
-    tier = "pro" if (u and u[0].get('is_subscribed')) else "free"
+    tier = "free"  # 个人自托管无需订阅等级
+    try:
+        from app.utils.db import execute_query
+        u = execute_query("SELECT is_subscribed FROM users WHERE id = %s", (g.user_id,))
+        tier = "pro" if (u and u[0].get('is_subscribed')) else "free"
+    except Exception: pass
     context = {}
     if data.get('symbol'):
         context['focus_symbol'] = data['symbol']
